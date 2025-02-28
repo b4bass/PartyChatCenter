@@ -1,0 +1,925 @@
+## Interface: 11506
+## Title: Party Chat Center
+## Notes: Displays chat messages in the middle of the screen (type /ce for config)
+## Author: B4bass
+## SavedVariables: ChatEnhancerDB
+## Version: 0.1b
+PartyChatCenter.lua
+Core.lua
+Options.lua
+
+
+
+
+
+
+
+local addonName, addon = ...
+
+-- Declare SavedVariables (this line goes at the very top)
+-- This tells WoW to save ChatEnhancerDB to SavedVariables
+_G["ChatEnhancerDB"] = _G["ChatEnhancerDB"] or {}
+
+-- Default config
+local defaults = {
+    point = "TOP",
+    x = 0,
+    y = -250,
+    fontSize = 18,
+    timeVisible = 3,
+    fontOpacity = 1.0,
+    useBackground = false,
+    bgOpacity = 0.7,
+    chatOrder = "TOP",
+    showNames = true,
+    showAllChat = true,
+    filterQuestie = true,
+    filterOwnMessages = false,
+    colorMessages = false,
+    locationMode = 3,
+    alertKeywords = "Be careful\nMana\nPatrol",
+    alertModeEnabled = false,
+    alertSound = true,
+    highlightKeyword = true,
+}
+
+-- Localization table (unchanged, included for completeness)
+local L = {
+    TITLE = "Chat Enhancer",
+    OPTIONS = "Chat Enhancer Options",
+    FONT_SIZE = "Font Size",
+    DISPLAY_TIME = "Display Time",
+    FONT_OPACITY = "Font Opacity",
+    BG_OPACITY = "Background Opacity",
+    REVERSE_CHAT = "Reverse Chat Order",
+    SHOW_NAMES = "Show Names",
+    SHOW_ALL_CHAT = "Show All Chat",
+    FILTER_QUESTIE = "Filter Questie Messages",
+    FILTER_OWN = "Filter Your Messages",
+    COLOR_MESSAGES = "Color Messages",
+    LOCATION_MODE = "Location Mode",
+    LOCATION_DUNGEON = "Dungeon Only",
+    LOCATION_WORLD = "World Only",
+    LOCATION_BOTH = "Both",
+    SECTION_DISPLAY = "Display Settings",
+    SECTION_FILTERS = "Filter Settings",
+    SECTION_BEHAVIOR = "Behavior Settings",
+    SECTION_ALERT = "Alert Settings",
+    RESET_ALL = "Reset All",
+    ALERT_KEYWORDS = "Alert Keywords",
+    ALERT_MODE_ENABLED = "Enable Alert Only Mode",
+    ALERT_SOUND = "Alert Sound",
+    HIGHLIGHT_KEYWORD = "Highlight Alert Keyword",
+    POSITION_RESET = "Chat Enhancer: Position reset",
+    FONT_SET = "Chat Enhancer: Font size set to %d",
+    TIME_SET = "Chat Enhancer: Display time set to %d seconds",
+    RESET_CONFIRM = "Chat Enhancer: All settings reset to defaults",
+    TOOLTIP_fontsize = "Set font size (12-28).",
+    TOOLTIP_displaytime = "Set display time (1-6s).",
+    TOOLTIP_fontopacity = "Set text transparency.",
+    TOOLTIP_bgopacity = "Set background transparency.",
+    TOOLTIP_reversechat = "Reverse message order.",
+    TOOLTIP_shownames = "Show sender names.",
+    TOOLTIP_showallchat = "Show all chat types.",
+    TOOLTIP_filterquestie = "Hide Questie messages.",
+    TOOLTIP_filterown = "Hide your messages.",
+    TOOLTIP_colormessages = "Color messages by type.",
+    TOOLTIP_locationmode = "Set active locations.",
+    TOOLTIP_alertkeywords = "Set alert keywords (one per line).",
+    TOOLTIP_alertmodeenabled = "Show only alert messages.",
+    TOOLTIP_alertsound = "Play sound on alerts.",
+    TOOLTIP_highlightkeyword = "Highlight keywords in red.",
+}
+
+local function Setup()
+    -- Initialize ChatEnhancerDB with defaults if it's empty (first load)
+    if not next(ChatEnhancerDB) then
+        for k, v in pairs(defaults) do
+            ChatEnhancerDB[k] = v
+        end
+    end
+    
+    local cfg = ChatEnhancerDB
+    
+    -- Set max width based on screen resolution
+    local screenWidth = GetScreenWidth()
+    local maxWidth = math.min(768, screenWidth * 0.7)
+    
+    -- Create the main message frame
+    local msgFrame = CreateFrame("MessageFrame", "ChatEnhancerFrame", UIParent)
+    msgFrame:SetSize(maxWidth, 80)
+    msgFrame:SetPoint(cfg.point, UIParent, cfg.point, cfg.x, cfg.y)
+    msgFrame:SetInsertMode(cfg.chatOrder)
+    msgFrame:SetFont(STANDARD_TEXT_FONT, cfg.fontSize, "OUTLINE")
+    msgFrame:SetFading(true)
+    msgFrame:SetFadeDuration(0.5)
+    msgFrame:SetTimeVisible(cfg.timeVisible)
+    msgFrame:SetAlpha(cfg.fontOpacity)
+    
+-- Replace the background handling portion in the Setup() function with this improved version
+
+-- Create a background frame
+local bg = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+bg:SetFrameStrata("BACKGROUND")
+bg:SetFrameLevel(0)
+bg:SetBackdrop({
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile = true, tileSize = 16, edgeSize = 16,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 }
+})
+bg:SetBackdropColor(0, 0, 0, 0) -- Start with 0 opacity
+bg:SetBackdropBorderColor(0.5, 0.5, 0.5, 0)
+bg:SetPoint("CENTER", msgFrame, "CENTER", 0, 0)
+bg:SetSize(maxWidth, 80)
+bg:Hide() -- Hide initially
+
+-- Set message frame to a higher strata
+msgFrame:SetFrameStrata("MEDIUM")
+
+-- Active messages tracking
+local activeMessages = {}
+local bgVisible = false
+local bgFadeTimer = nil
+
+-- Function to update background size based on active messages
+local function UpdateBackgroundSize()
+    if #activeMessages == 0 then return end
+    
+    -- Calculate total height needed for all visible messages
+    local totalHeight = 0
+    local maxMsgWidth = msgFrame:GetWidth() - 20
+    
+    for _, msg in ipairs(activeMessages) do
+        -- Estimate the number of lines this message will take
+        local cleanText = msg.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        local approxWidth = cleanText:len() * (cfg.fontSize * 0.6)
+        local lines = math.max(1, math.ceil(approxWidth / maxMsgWidth))
+        totalHeight = totalHeight + (lines * cfg.fontSize * 1.5)
+    end
+    
+    -- Add padding
+    totalHeight = totalHeight + 20
+    bg:SetHeight(math.max(60, totalHeight))
+    
+    -- Position properly based on chat order
+    bg:ClearAllPoints()
+    if cfg.chatOrder == "TOP" then
+        bg:SetPoint("TOP", msgFrame, "TOP", 0, 10)
+    else
+        bg:SetPoint("BOTTOM", msgFrame, "BOTTOM", 0, -10)
+    end
+    
+    bg:SetWidth(msgFrame:GetWidth() + 20) -- Add some padding
+end
+
+-- Function to handle background visibility
+local function UpdateBackgroundVisibility()
+    -- Cancel any existing fade timer
+    if bgFadeTimer then
+        bgFadeTimer:Cancel()
+        bgFadeTimer = nil
+    end
+    
+    local shouldBeVisible = (#activeMessages > 0 and cfg.bgOpacity > 0)
+    
+    if shouldBeVisible and not bgVisible then
+        -- Show and fade in background
+        bg:SetBackdropColor(0, 0, 0, 0)
+        bg:SetBackdropBorderColor(0.5, 0.5, 0.5, 0)
+        bg:Show()
+        
+        -- Simple fade in using animation
+        bg.fadeIn = bg.fadeIn or bg:CreateAnimationGroup()
+        if bg.fadeIn:IsPlaying() then bg.fadeIn:Stop() end
+        
+        bg.fadeIn:SetScript("OnPlay", function()
+            bg:Show()
+        end)
+        
+        if not bg.fadeIn.alpha then
+            bg.fadeIn.alpha = bg.fadeIn:CreateAnimation("Alpha")
+            bg.fadeIn.alpha:SetFromAlpha(0)
+            bg.fadeIn.alpha:SetDuration(0.3)
+        end
+        
+        bg.fadeIn.alpha:SetToAlpha(cfg.bgOpacity)
+        bg.fadeIn:SetScript("OnFinished", function()
+            bg:SetBackdropColor(0, 0, 0, cfg.bgOpacity)
+            bg:SetBackdropBorderColor(0.5, 0.5, 0.5, cfg.bgOpacity)
+        end)
+        
+        bg.fadeIn:Play()
+        bgVisible = true
+        UpdateBackgroundSize()
+        
+    elseif not shouldBeVisible and bgVisible then
+        -- Fade out background
+        bg.fadeOut = bg.fadeOut or bg:CreateAnimationGroup()
+        if bg.fadeOut:IsPlaying() then bg.fadeOut:Stop() end
+        
+        if not bg.fadeOut.alpha then
+            bg.fadeOut.alpha = bg.fadeOut:CreateAnimation("Alpha")
+            bg.fadeOut.alpha:SetFromAlpha(cfg.bgOpacity)
+            bg.fadeOut.alpha:SetDuration(0.5)
+        end
+        
+        bg.fadeOut.alpha:SetFromAlpha(cfg.bgOpacity)
+        bg.fadeOut.alpha:SetToAlpha(0)
+        
+        bg.fadeOut:SetScript("OnFinished", function()
+            bg:Hide()
+            bgVisible = false
+        end)
+        
+        bg.fadeOut:Play()
+    elseif shouldBeVisible and bgVisible then
+        -- Just update the size for visibility changes
+        bg:SetBackdropColor(0, 0, 0, cfg.bgOpacity)
+        bg:SetBackdropBorderColor(0.5, 0.5, 0.5, cfg.bgOpacity)
+        UpdateBackgroundSize()
+    end
+end
+
+-- Scheduled function to check if background should fade out
+local function CheckBackgroundFade()
+    local now = GetTime()
+    local shouldBeVisible = false
+    
+    -- Check if any messages are still active
+    for i = #activeMessages, 1, -1 do
+        local msg = activeMessages[i]
+        if now - msg.time <= msg.duration then
+            shouldBeVisible = true
+            break
+        end
+    end
+    
+    if not shouldBeVisible and bgVisible then
+        UpdateBackgroundVisibility()
+    end
+end
+
+-- Original AddMessage function
+local originalAddMessage = msgFrame.AddMessage
+
+-- Hook AddMessage to track active messages and update background
+msgFrame.AddMessage = function(self, text, ...)
+    -- Add to active messages
+    table.insert(activeMessages, {
+        text = text,
+        time = GetTime(),
+        duration = cfg.timeVisible
+    })
+    
+    -- Call original function
+    originalAddMessage(self, text, ...)
+    
+    -- Update background visibility
+    UpdateBackgroundVisibility()
+    
+    -- Schedule a check for when this message expires
+    bgFadeTimer = C_Timer.NewTimer(cfg.timeVisible + 0.5, CheckBackgroundFade)
+end
+
+-- Background update frame for cleaning expired messages
+local updateFrame = CreateFrame("Frame")
+updateFrame:SetScript("OnUpdate", function()
+    local now = GetTime()
+    local needsUpdate = false
+    local needsVisibilityCheck = false
+    
+    -- Clean expired messages
+    for i = #activeMessages, 1, -1 do
+        local msg = activeMessages[i]
+        if now - msg.time > msg.duration then
+            table.remove(activeMessages, i)
+            needsUpdate = true
+            needsVisibilityCheck = true
+        end
+    end
+    
+    -- Update background if messages changed
+    if needsUpdate and bgVisible then
+        UpdateBackgroundSize()
+    end
+    
+    -- Check if background should be hidden
+    if needsVisibilityCheck and #activeMessages == 0 and bgVisible then
+        UpdateBackgroundVisibility()
+    end
+end)
+    
+    msgFrame:SetMovable(true)
+    msgFrame:RegisterForDrag("LeftButton")
+    msgFrame:SetScript("OnDragStart", function() 
+        if IsShiftKeyDown() then 
+            msgFrame:StartMoving() 
+        end
+    end)
+    msgFrame:SetScript("OnDragStop", function() 
+        msgFrame:StopMovingOrSizing() 
+        local point, _, _, x, y = msgFrame:GetPoint()
+        cfg.point = point
+        cfg.x = x
+        cfg.y = y
+    end)
+    
+    -- Store other references for access from other functions
+    addon.frame = msgFrame
+    addon.bg = bg
+    addon.cfg = cfg
+    addon.activeMessages = activeMessages
+    
+    -- Update the background handling function to properly handle opacity changes
+    addon.updateBackground = function()
+        -- Immediately update backdrop colors
+        bg:SetBackdropColor(0, 0, 0, bgVisible and addon.cfg.bgOpacity or 0)
+        bg:SetBackdropBorderColor(0.5, 0.5, 0.5, bgVisible and addon.cfg.bgOpacity or 0)
+        
+        -- If opacity is 0, hide background completely
+        if addon.cfg.bgOpacity <= 0 then
+            if bgVisible then
+                bgVisible = false
+                bg:Hide()
+            end
+            -- Clear any pending timers
+            if bgFadeTimer then
+                bgFadeTimer:Cancel()
+                bgFadeTimer = nil
+            end
+        else
+            -- Check if we need to show the background (if messages exist)
+            if #activeMessages > 0 and not bgVisible then
+                UpdateBackgroundVisibility()
+            end
+        end
+        
+        -- Update the size if currently visible
+        if bgVisible and #activeMessages > 0 then
+            UpdateBackgroundSize()
+        end
+    end
+    
+    addon.playerName = UnitName("player")
+    
+    addon.classColors = {}
+    addon.GetClassColor = function(name)
+        if addon.classColors[name] then
+            return unpack(addon.classColors[name])
+        end
+        
+        local inRaid = IsInRaid()
+        local numMembers = GetNumGroupMembers()
+        local prefix = inRaid and "raid" or "party"
+        
+        for i = 1, numMembers do
+            local unit = prefix..i
+            if UnitExists(unit) and UnitName(unit) == name then
+                local _, class = UnitClass(unit)
+                if class and RAID_CLASS_COLORS[class] then
+                    local color = RAID_CLASS_COLORS[class]
+                    addon.classColors[name] = {color.r, color.g, color.b}
+                    return color.r, color.g, color.b
+                end
+            end
+        end
+        
+        addon.classColors[name] = {0.5, 0.7, 1.0}
+        return 0.5, 0.7, 1.0
+    end
+end
+
+-- Standalone Options Frame
+local function ShowOptions()
+    if addon.optionsFrame then 
+        addon.optionsFrame:Show()
+        return
+    end
+    
+    local cfg = addon.cfg
+    local frame = CreateFrame("Frame", "ChatEnhancerOptions", UIParent, "BasicFrameTemplateWithInset")
+    frame:SetSize(400, 620)
+    frame:SetPoint("CENTER")
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame.title = frame:CreateFontString(nil, "OVERLAY")
+    frame.title:SetFontObject("GameFontHighlight")
+    frame.title:SetPoint("TOP", 0, -5)
+    frame.title:SetText(L.OPTIONS)
+    
+    local function CreateSlider(name, label, min, max, value, x, y, formatter)
+        local slider = CreateFrame("Slider", "ChatEnhancer"..name.."Slider", frame, "OptionsSliderTemplate")
+        slider:SetPoint("TOPLEFT", x, y)
+        slider:SetMinMaxValues(min, max)
+        slider:SetValueStep(1)
+        slider:SetValue(value)
+        slider:SetWidth(170)
+        slider.text = _G[slider:GetName() .. "Text"]
+        slider.low = _G[slider:GetName() .. "Low"]
+        slider.high = _G[slider:GetName() .. "High"]
+        
+        slider.low:SetText(min)
+        slider.high:SetText(max)
+        slider.text:SetText(label .. ": " .. formatter(value))
+        
+        slider:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["TOOLTIP_" .. name] or "No tooltip available.", 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        slider:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        
+        return slider
+    end
+    
+    local function CreateCheckbox(name, label, checked, x, y)
+        local checkbox = CreateFrame("CheckButton", "ChatEnhancer"..name.."Checkbox", frame, "UICheckButtonTemplate")
+        checkbox:SetPoint("TOPLEFT", x, y)
+        _G[checkbox:GetName() .. "Text"]:SetText(label)
+        checkbox:SetChecked(checked)
+        
+        checkbox:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["TOOLTIP_" .. name] or "No tooltip available.", 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        checkbox:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        
+        return checkbox
+    end
+    
+    local function CreateDropdown(name, label, options, default, x, y, onChange)
+        local dropdown = CreateFrame("Frame", "ChatEnhancer"..name.."Dropdown", frame, "UIDropDownMenuTemplate")
+        dropdown:SetPoint("TOPLEFT", x -15, y -13)
+        UIDropDownMenu_SetWidth(dropdown, 100)
+        UIDropDownMenu_SetText(dropdown, options[default])
+        
+        local function Initialize(self, level)
+            for i, option in ipairs(options) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = option
+                info.value = i
+                info.func = function(self)
+                    UIDropDownMenu_SetSelectedValue(dropdown, self.value)
+                    UIDropDownMenu_SetText(dropdown, option)
+                    onChange(self.value)
+                    CloseDropDownMenus()
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end
+        
+        UIDropDownMenu_Initialize(dropdown, Initialize)
+        UIDropDownMenu_SetSelectedValue(dropdown, default)
+        
+        local labelText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        labelText:SetPoint("TOPLEFT", x + 5, y + 5)
+        labelText:SetText(label)
+        
+        dropdown:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["TOOLTIP_" .. name] or "No tooltip available.", 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        dropdown:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        
+        return dropdown
+    end
+    
+    local function CreateEditBox(name, label, text, x, y, width, height, onTextChanged)
+        local scrollFrame = CreateFrame("ScrollFrame", "ChatEnhancer"..name.."ScrollFrame", frame, "UIPanelScrollFrameTemplate")
+        scrollFrame:SetPoint("TOPLEFT", x, y)
+        scrollFrame:SetSize(width, 60)
+    
+        local editBox = CreateFrame("EditBox", "ChatEnhancer"..name.."EditBox", scrollFrame)
+        editBox:SetMultiLine(true)
+        editBox:SetMaxLetters(1000)
+        editBox:SetAutoFocus(false)
+        editBox:SetFontObject("ChatFontNormal")
+        editBox:SetTextInsets(5, 5, 5, 5)
+        editBox:SetText(text or "")
+    
+        editBox:SetSize(width - 20, height * 2)
+    
+        scrollFrame:SetScrollChild(editBox)
+    
+        local labelText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        labelText:SetPoint("TOPLEFT", x + 5, y + 20)
+        labelText:SetText(label)
+        
+        editBox:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["TOOLTIP_" .. name] or "No tooltip available.", 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        editBox:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        
+        editBox:SetScript("OnTextChanged", function(self, userInput)
+            if userInput then
+                onTextChanged(self:GetText())
+            end
+        end)
+        
+        return editBox
+    end
+    
+    local function CreateSeparator(text, y)
+        local separator = frame:CreateTexture(nil, "ARTWORK")
+        separator:SetPoint("TOP", 0, y)
+        separator:SetSize(380, 1)
+        separator:SetColorTexture(1, 0.82, 0, 1)
+        local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("TOP", separator, "BOTTOM", 0, -5)
+        label:SetText(text)
+        label:SetTextColor(1, 0.82, 0)
+        return separator
+    end
+    
+    local leftX, rightX = 20, 210
+
+    CreateSeparator(L.SECTION_DISPLAY, -30)
+    
+    -- Font size slider (top left)
+    local fontSlider = CreateSlider("fontsize", L.FONT_SIZE, 12, 28, cfg.fontSize, leftX, -60, 
+        function(v) return v end)
+    fontSlider:SetScript("OnValueChanged", function(self, value)
+        local val = math.floor(value)
+        self.text:SetText(L.FONT_SIZE .. ": " .. val)
+        cfg.fontSize = val
+        addon.frame:SetFont(STANDARD_TEXT_FONT, val, "OUTLINE")
+    end)
+    
+    -- Font opacity slider (top right)
+    local fontOpacitySlider = CreateSlider("fontopacity", L.FONT_OPACITY, 1, 10, cfg.fontOpacity * 10, rightX, -60, 
+        function(v) return (v/10) end)
+    fontOpacitySlider:SetValueStep(1)
+    fontOpacitySlider:SetScript("OnValueChanged", function(self, value)
+        local val = math.floor(value) / 10
+        self.text:SetText(L.FONT_OPACITY .. ": " .. val)
+        cfg.fontOpacity = val
+        addon.frame:SetAlpha(val)
+    end)
+    
+    -- Display time slider (middle left)
+    local timeSlider = CreateSlider("displaytime", L.DISPLAY_TIME, 1, 6, cfg.timeVisible, leftX, -115, 
+        function(v) return v .. "s" end)
+    timeSlider:SetScript("OnValueChanged", function(self, value)
+        local val = math.floor(value)
+        self.text:SetText(L.DISPLAY_TIME .. ": " .. val .. "s")
+        cfg.timeVisible = val
+        addon.frame:SetTimeVisible(val)
+    end)
+    
+    -- Background opacity slider (middle right)
+    local bgOpacitySlider = CreateSlider("bgopacity", L.BG_OPACITY, 0, 10, cfg.bgOpacity * 10, rightX, -115, 
+        function(v) return (v/10) end)
+    bgOpacitySlider:SetValueStep(1)
+    bgOpacitySlider:SetScript("OnValueChanged", function(self, value)
+        -- Force value to be one of: 0, 0.1, 0.2, ..., 1.0
+        local discreteValue = math.floor(value)
+        if discreteValue ~= value then
+            self:SetValue(discreteValue)
+            return
+        end
+        
+        local val = discreteValue / 10
+        self.text:SetText(L.BG_OPACITY .. ": " .. val)
+        cfg.bgOpacity = val
+        
+        -- Pass through to our background updater
+        addon.updateBackground()
+        
+        -- If opacity is now 0, immediately hide background
+        if val <= 0 and addon.bg:IsShown() then
+            addon.bg:Hide()
+            bgVisible = false
+        end
+    end)
+    
+    CreateSeparator(L.SECTION_FILTERS, -170)
+    
+    local questieCheck = CreateCheckbox("filterquestie", L.FILTER_QUESTIE, cfg.filterQuestie, leftX, -200)
+    questieCheck:SetScript("OnClick", function(self)
+        cfg.filterQuestie = self:GetChecked()
+    end)
+    
+    local ownMsgCheck = CreateCheckbox("filterown", L.FILTER_OWN, cfg.filterOwnMessages, leftX, -230)
+    ownMsgCheck:SetScript("OnClick", function(self)
+        cfg.filterOwnMessages = self:GetChecked()
+    end)
+    
+    CreateSeparator(L.SECTION_BEHAVIOR, -270)
+    
+    local chatOrderCheck = CreateCheckbox("reversechat", L.REVERSE_CHAT, cfg.chatOrder == "BOTTOM", leftX, -300)
+    chatOrderCheck:SetScript("OnClick", function(self)
+        cfg.chatOrder = self:GetChecked() and "BOTTOM" or "TOP"
+        addon.frame:SetInsertMode(cfg.chatOrder)
+    end)
+    
+    local showNamesCheck = CreateCheckbox("shownames", L.SHOW_NAMES, cfg.showNames, leftX, -330)
+    showNamesCheck:SetScript("OnClick", function(self)
+        cfg.showNames = self:GetChecked()
+    end)
+    
+    local showAllChatCheck = CreateCheckbox("showallchat", L.SHOW_ALL_CHAT, cfg.showAllChat, leftX, -360)
+    showAllChatCheck:SetScript("OnClick", function(self)
+        cfg.showAllChat = self:GetChecked()
+        local eventFrame = addon.eventFrame
+        if cfg.showAllChat then
+            eventFrame:RegisterEvent("CHAT_MSG_YELL")
+            eventFrame:RegisterEvent("CHAT_MSG_SAY")
+        else
+            eventFrame:UnregisterEvent("CHAT_MSG_YELL")
+            eventFrame:UnregisterEvent("CHAT_MSG_SAY")
+        end
+    end)
+    
+    local colorMessagesCheck = CreateCheckbox("colormessages", L.COLOR_MESSAGES, cfg.colorMessages, rightX, -300)
+    colorMessagesCheck:SetScript("OnClick", function(self)
+        cfg.colorMessages = self:GetChecked()
+    end)
+    
+    local locationOptions = {L.LOCATION_DUNGEON, L.LOCATION_WORLD, L.LOCATION_BOTH}
+    local locationDropdown = CreateDropdown("locationmode", L.LOCATION_MODE, locationOptions, cfg.locationMode, rightX, -343,
+        function(value)
+            cfg.locationMode = value
+        end)
+    
+    CreateSeparator(L.SECTION_ALERT, -400)
+    
+    local alertKeywordsEditBox = CreateEditBox("alertkeywords", L.ALERT_KEYWORDS, cfg.alertKeywords, leftX, -450, 160, 60, 
+        function(text)
+            cfg.alertKeywords = text
+        end)
+    
+    local highlightKeywordCheck = CreateCheckbox("highlightkeyword", L.HIGHLIGHT_KEYWORD, cfg.highlightKeyword, rightX, -430)
+    highlightKeywordCheck:SetScript("OnClick", function(self)
+        cfg.highlightKeyword = self:GetChecked()
+    end)
+    
+    local alertSoundCheck = CreateCheckbox("alertsound", L.ALERT_SOUND, cfg.alertSound, rightX, -460)
+    alertSoundCheck:SetScript("OnClick", function(self)
+        cfg.alertSound = self:GetChecked()
+    end)
+    
+    local alertModeEnabledCheck = CreateCheckbox("alertmodeenabled", L.ALERT_MODE_ENABLED, cfg.alertModeEnabled, rightX, -490)
+    alertModeEnabledCheck:SetScript("OnClick", function(self)
+        cfg.alertModeEnabled = self:GetChecked()
+    end)
+    
+    
+    -- Reset button
+    local resetBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    resetBtn:SetSize(80, 22)
+    resetBtn:SetPoint("BOTTOM", 0, 20)
+    resetBtn:SetText(L.RESET_ALL)
+    resetBtn:SetScript("OnClick", function()
+        for k, v in pairs(defaults) do
+            cfg[k] = v
+        end
+        
+        -- Clear existing active messages
+        wipe(addon.activeMessages)
+        
+        addon.frame:ClearAllPoints()
+        addon.frame:SetPoint(cfg.point, UIParent, cfg.point, cfg.x, cfg.y)
+        addon.frame:SetFont(STANDARD_TEXT_FONT, cfg.fontSize, "OUTLINE")
+        addon.frame:SetTimeVisible(cfg.timeVisible)
+        addon.frame:SetAlpha(cfg.fontOpacity)
+        addon.frame:SetInsertMode(cfg.chatOrder)
+        
+        -- Update background
+        addon.updateBackground()
+        
+        -- Update UI
+        fontSlider:SetValue(cfg.fontSize)
+        timeSlider:SetValue(cfg.timeVisible)
+        fontOpacitySlider:SetValue(cfg.fontOpacity * 10)
+        bgOpacitySlider:SetValue(cfg.bgOpacity * 10)
+        chatOrderCheck:SetChecked(cfg.chatOrder == "BOTTOM")
+        showNamesCheck:SetChecked(cfg.showNames)
+        showAllChatCheck:SetChecked(cfg.showAllChat)
+        questieCheck:SetChecked(cfg.filterQuestie)
+        ownMsgCheck:SetChecked(cfg.filterOwnMessages)
+        colorMessagesCheck:SetChecked(cfg.colorMessages)
+        UIDropDownMenu_SetSelectedValue(locationDropdown, cfg.locationMode)
+        UIDropDownMenu_SetText(locationDropdown, locationOptions[cfg.locationMode])
+        alertKeywordsEditBox:SetText(cfg.alertKeywords)
+        highlightKeywordCheck:SetChecked(cfg.highlightKeyword)
+        alertSoundCheck:SetChecked(cfg.alertSound)
+        alertModeEnabledCheck:SetChecked(cfg.alertModeEnabled)
+        
+        local eventFrame = addon.eventFrame
+        if cfg.showAllChat then
+            eventFrame:RegisterEvent("CHAT_MSG_YELL")
+            eventFrame:RegisterEvent("CHAT_MSG_SAY")
+        else
+            eventFrame:UnregisterEvent("CHAT_MSG_YELL")
+            eventFrame:UnregisterEvent("CHAT_MSG_SAY")
+        end
+        
+        print(L.RESET_CONFIRM)
+    end)
+    
+    addon.optionsFrame = frame
+end
+
+-- Helper function for optimized keyword parsing (unchanged)
+local function ParseKeywords(keywordsText)
+    local keywords = {}
+    if not keywordsText or keywordsText == "" then return keywords end
+    
+    for keyword in keywordsText:gmatch("[^\n]+") do
+        keyword = strtrim(keyword):lower()
+        if keyword ~= "" then
+            keywords[keyword] = true
+        end
+    end
+    
+    return keywords
+end
+
+-- Initialize event handlers
+local eventFrame = CreateFrame("Frame")
+addon.eventFrame = eventFrame
+eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
+    if event == "ADDON_LOADED" and arg1 == addonName then
+        Setup()
+        
+        self:RegisterEvent("CHAT_MSG_PARTY")
+        self:RegisterEvent("CHAT_MSG_PARTY_LEADER")
+        self:RegisterEvent("CHAT_MSG_RAID")
+        self:RegisterEvent("CHAT_MSG_RAID_LEADER")
+        self:RegisterEvent("CHAT_MSG_RAID_WARNING")
+        self:RegisterEvent("GROUP_ROSTER_UPDATE")
+        if addon.cfg.showAllChat then
+            self:RegisterEvent("CHAT_MSG_YELL")
+            self:RegisterEvent("CHAT_MSG_SAY")
+        end
+        self:UnregisterEvent("ADDON_LOADED")
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        addon.classColors = {}
+    elseif event:find("CHAT_MSG_") then
+        local message, sender = arg1, arg2
+        local cfg = addon.cfg
+        
+        local inInstance = IsInInstance()
+        if (cfg.locationMode == 1 and not inInstance) or
+           (cfg.locationMode == 2 and inInstance) then
+            return
+        end
+        
+        if cfg.filterOwnMessages then
+            local playerName = UnitName("player")
+            local shortSender = Ambiguate(sender, "short")
+            if shortSender == playerName then 
+                return
+            end
+        end
+        
+        if cfg.filterQuestie and message:find("Questie") then return end
+        
+        local hasKeyword = false
+        if cfg.highlightKeyword then
+            local keywords = ParseKeywords(cfg.alertKeywords)
+            for keyword in pairs(keywords) do
+                if message:lower():find(keyword:lower()) then
+                    hasKeyword = true
+                    break
+                end
+            end
+            
+            if cfg.alertModeEnabled and not hasKeyword then
+                return
+            end
+        elseif cfg.alertModeEnabled then
+            local keywords = ParseKeywords(cfg.alertKeywords)
+            for keyword in pairs(keywords) do
+                if message:lower():find(keyword:lower()) then
+                    hasKeyword = true
+                    break
+                end
+            end
+            
+            if not hasKeyword then
+                return
+            end
+        end
+        
+        sender = Ambiguate(sender, "short")
+        local r, g, b = addon.GetClassColor(sender)
+        local displayText
+        
+        if cfg.colorMessages then
+            local nameColor = "|cff" .. string.format("%02x%02x%02x", r*255, g*255, b*255)
+            
+            local msgColor
+            if event == "CHAT_MSG_SAY" then
+                msgColor = "|cffffffff"
+            elseif event == "CHAT_MSG_PARTY" or event == "CHAT_MSG_PARTY_LEADER" then
+                msgColor = "|cff00b7eb"
+            elseif event == "CHAT_MSG_YELL" then
+                msgColor = "|cffff0000"
+            elseif event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER" or event == "CHAT_MSG_RAID_WARNING" then
+                msgColor = "|cffa330c9"
+            else
+                msgColor = nameColor
+            end
+            
+            if cfg.showNames then
+                displayText = nameColor .. sender .. "|r: " .. msgColor .. message .. "|r"
+            else
+                displayText = msgColor .. message .. "|r"
+            end
+        else
+            if cfg.showNames then
+                displayText = "|cff" .. string.format("%02x%02x%02x", r*255, g*255, b*255) .. sender .. "|r: " .. message
+            else
+                displayText = message
+            end
+        end
+        
+        if cfg.highlightKeyword and hasKeyword then
+            local keywords = ParseKeywords(cfg.alertKeywords)
+            
+            for keyword in pairs(keywords) do
+                local lowerMsg = message:lower()
+                local lowerKeyword = keyword:lower()
+                local pos = 1
+                
+                local count = 0
+                while true do
+                    local i = lowerMsg:find(lowerKeyword, pos, true)
+                    if not i then break end
+                    count = count + 1
+                    pos = i + #lowerKeyword
+                end
+                
+                if count > 0 then
+                    for i = 1, count do
+                        local escapedKeyword = keyword:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+                        local pattern = string.format("([^|]-)(%s)", escapedKeyword)
+                        
+                        displayText = displayText:gsub(pattern, function(prefix, match)
+                            return prefix .. "|cffff0000#" .. match:upper() .. "#|r"
+                        end, 1) 
+                    end
+                    
+                    if cfg.alertSound then
+                        PlaySound(5274, "Master")
+                    end
+                end
+            end
+        end
+        
+        addon.frame:AddMessage(displayText)
+    end
+end)
+
+-- Slash command handler (unchanged)
+SLASH_CHATENHANCER1 = "/ce"
+SlashCmdList["CHATENHANCER"] = function(msg)
+    msg = msg:lower()
+    
+    if msg == "reset" then
+        addon.frame:ClearAllPoints()
+        addon.frame:SetPoint(defaults.point, defaults.x, defaults.y)
+        addon.cfg.point = defaults.point
+        addon.cfg.x = defaults.x
+        addon.cfg.y = defaults.y
+        print(L.POSITION_RESET)
+    elseif msg:match("^font%s+(%d+)$") then
+        local size = tonumber(msg:match("^font%s+(%d+)$"))
+        if size and size >= 12 and size <= 28 then
+            addon.cfg.fontSize = size
+            addon.frame:SetFont(STANDARD_TEXT_FONT, size, "OUTLINE")
+            print(string.format(L.FONT_SET, size))
+        end
+    elseif msg:match("^time%s+(%d+)$") then
+        local time = tonumber(msg:match("^time%s+(%d+)$"))
+        if time and time >= 1 and time <= 6 then
+            addon.cfg.timeVisible = time
+            addon.frame:SetTimeVisible(time)
+            print(string.format(L.TIME_SET, time))
+        end
+    elseif msg == "test" then
+        addon.frame:AddMessage(addon.cfg.showNames and 
+            ("|cff" .. string.format("%02x%02x%02x", 255, 128, 0) .. "Test Player|r: This is a test message") or 
+            "This is a test message")
+    else
+        ShowOptions()
+    end
+end
