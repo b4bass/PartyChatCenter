@@ -11,10 +11,10 @@ addon.defaults = {
     x = 0,
     y = -250,
     fontSize = 18,
-    timeVisible = 3,
+    timeVisible = 4,
     fontOpacity = 1.0,
     useBackground = false,
-    bgOpacity = 0.7,
+    bgOpacity = 1,
     chatOrder = "TOP",
     showNames = true,
     showAllChat = true,
@@ -60,7 +60,7 @@ addon.L = {
     TIME_SET = "Chat Enhancer: Display time set to %d seconds",
     RESET_CONFIRM = "Chat Enhancer: All settings reset to defaults",
     TOOLTIP_fontsize = "Adjust the font size of chat messages (12-28).",
-    TOOLTIP_displaytime = "Set how long messages remain visible in seconds (1-6s).",
+    TOOLTIP_displaytime = "Set how long messages remain visible in seconds (1-8s).",
     TOOLTIP_fontopacity = "Adjust the transparency of chat text (0.1-1.0).",
     TOOLTIP_bgopacity = "Adjust the transparency of the background when shown (0.1-1.0).",
     TOOLTIP_reversechat = "Reverse the order of chat messages (newest at bottom vs. top).",
@@ -73,7 +73,7 @@ addon.L = {
     TOOLTIP_alertkeywords = "Enter newline-separated keywords or phrases to trigger alerts (e.g., 'Be careful\nMana\nPatrol').",
     TOOLTIP_alertmodeenabled = "Enable alert-only mode to show messages only with keywords.",
     TOOLTIP_alertsound = "Toggle a ding sound when a keyword is detected in alert-only mode.",
-    TOOLTIP_highlightkeyword = "Highlight alert keywords in red with a larger font (+2 size). When off, disable keyword matching and filtering for performance.",
+    TOOLTIP_highlightkeyword = "Highlight alert keywords in red.",
 }
 
 -- Slash command handler

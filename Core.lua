@@ -5,7 +5,7 @@ local addonName, addon = ...
 -- Initialize addon on load
 local function Setup()
     if not next(ChatEnhancerDB) then
-        for k, v in pairs(addon.defaults) do  -- Changed from defaults to addon.defaults
+        for k, v in pairs(addon.defaults) do
             ChatEnhancerDB[k] = v
         end
     end
