@@ -56,31 +56,58 @@ local function Setup()
         return string.format("|c%s%s|r", bgColor:GenerateHexColor(), formattedText)
     end
     
-    -- Override AddMessage to handle background formatting
-    local originalAddMessage = msgFrame.AddMessage
-    msgFrame.AddMessage = function(self, text, ...)
-        local now = GetTime()
-        
-        -- Clean expired messages
-        for i = #activeMessages, 1, -1 do
-            if now - activeMessages[i].time > activeMessages[i].duration then
-                table.remove(activeMessages, i)
-            end
+    -- Instead of trying to color the background directly, we should modify how messages are displayed
+local function FormatTextWithBackground(text)
+    -- Just return the text as is - we'll handle background separately
+    return text
+end
+
+-- Override AddMessage to handle background formatting
+local originalAddMessage = msgFrame.AddMessage
+msgFrame.AddMessage = function(self, text, ...)
+    local now = GetTime()
+    
+    -- Clean expired messages
+    for i = #activeMessages, 1, -1 do
+        if now - activeMessages[i].time > activeMessages[i].duration then
+            table.remove(activeMessages, i)
         end
-        
-        -- Add new message to tracking
-        table.insert(activeMessages, {
-            text = text,
-            time = now,
-            duration = cfg.timeVisible
-        })
-        
-        -- Format text with background if needed
-        local displayText = FormatTextWithBackground(text)
-        
-        -- Call original method
-        originalAddMessage(self, displayText, ...)
     end
+    
+    -- Add new message to tracking
+    table.insert(activeMessages, {
+        text = text,
+        time = now,
+        duration = cfg.timeVisible
+    })
+    
+    -- Call original method with text color (not trying to do background via text)
+    originalAddMessage(self, text, ...)
+    
+    -- Instead, we need to create or update a backdrop for the frame
+    if not self.backdrop and cfg.bgOpacity > 0 then
+        self.backdrop = CreateFrame("Frame", nil, self)
+        self.backdrop:SetFrameStrata("BACKGROUND")
+        self.backdrop:SetPoint("TOPLEFT", self, "TOPLEFT", -5, 5)
+        self.backdrop:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 5, -5)
+        self.backdrop:SetBackdrop({
+            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        })
+        self.backdrop:SetBackdropColor(0, 0, 0, cfg.bgOpacity)
+        self.backdrop:SetBackdropBorderColor(0, 0, 0, cfg.bgOpacity * 0.5)
+    elseif self.backdrop then
+        if cfg.bgOpacity > 0 then
+            self.backdrop:SetBackdropColor(0, 0, 0, cfg.bgOpacity)
+            self.backdrop:SetBackdropBorderColor(0, 0, 0, cfg.bgOpacity * 0.5)
+            self.backdrop:Show()
+        else
+            self.backdrop:Hide()
+        end
+    end
+end
     
     -- Store references in addon table
     addon.frame = msgFrame
