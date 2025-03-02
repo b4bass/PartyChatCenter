@@ -141,7 +141,7 @@ function addon.ShowOptions()
         local val = math.floor(value)
         self.text:SetText(addon.L.FONT_SIZE .. ": " .. val)
         cfg.fontSize = val
-        addon.frame:SetFont(STANDARD_TEXT_FONT, val, "OUTLINE")
+        addon.updateDisplay()
     end)
     
     local fontOpacitySlider = CreateSlider("fontopacity", addon.L.FONT_OPACITY, 1, 10, cfg.fontOpacity * 10, rightX, -60,
@@ -151,16 +151,16 @@ function addon.ShowOptions()
         local val = math.floor(value) / 10
         self.text:SetText(addon.L.FONT_OPACITY .. ": " .. val)
         cfg.fontOpacity = val
-        addon.frame:SetAlpha(val)
+        addon.updateDisplay()
     end)
     
-    local timeSlider = CreateSlider("displaytime", addon.L.DISPLAY_TIME, 1, 6, cfg.timeVisible, leftX, -115,
+    local timeSlider = CreateSlider("displaytime", addon.L.DISPLAY_TIME, 1, 8, cfg.timeVisible, leftX, -115,
         function(v) return v .. "s" end)
     timeSlider:SetScript("OnValueChanged", function(self, value)
         local val = math.floor(value)
         self.text:SetText(addon.L.DISPLAY_TIME .. ": " .. val .. "s")
         cfg.timeVisible = val
-        addon.frame:SetTimeVisible(val)
+        addon.updateDisplay()
     end)
     
     local bgOpacitySlider = CreateSlider("bgopacity", addon.L.BG_OPACITY, 0, 10, cfg.bgOpacity * 10, rightX, -115,
@@ -175,11 +175,7 @@ function addon.ShowOptions()
         local val = discreteValue / 10
         self.text:SetText(addon.L.BG_OPACITY .. ": " .. val)
         cfg.bgOpacity = val
-        addon.updateBackground()
-        if val <= 0 and addon.bg:IsShown() then
-            addon.bg:Hide()
-            bgVisible = false
-        end
+        addon.updateDisplay()
     end)
     
     CreateSeparator(addon.L.SECTION_FILTERS, -170)
@@ -193,7 +189,7 @@ function addon.ShowOptions()
     local chatOrderCheck = CreateCheckbox("reversechat", addon.L.REVERSE_CHAT, cfg.chatOrder == "BOTTOM", leftX, -300)
     chatOrderCheck:SetScript("OnClick", function(self)
         cfg.chatOrder = self:GetChecked() and "BOTTOM" or "TOP"
-        addon.frame:SetInsertMode(cfg.chatOrder)
+        addon.updateDisplay()
     end)
     
     local showNamesCheck = CreateCheckbox("shownames", addon.L.SHOW_NAMES, cfg.showNames, leftX, -330)
@@ -243,11 +239,7 @@ function addon.ShowOptions()
         wipe(addon.activeMessages)
         addon.frame:ClearAllPoints()
         addon.frame:SetPoint(cfg.point, UIParent, cfg.point, cfg.x, cfg.y)
-        addon.frame:SetFont(STANDARD_TEXT_FONT, cfg.fontSize, "OUTLINE")
-        addon.frame:SetTimeVisible(cfg.timeVisible)
-        addon.frame:SetAlpha(cfg.fontOpacity)
-        addon.frame:SetInsertMode(cfg.chatOrder)
-        addon.updateBackground()
+        addon.updateDisplay()
         fontSlider:SetValue(cfg.fontSize)
         timeSlider:SetValue(cfg.timeVisible)
         fontOpacitySlider:SetValue(cfg.fontOpacity * 10)

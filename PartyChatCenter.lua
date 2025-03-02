@@ -11,10 +11,9 @@ addon.defaults = {
     x = 0,
     y = -250,
     fontSize = 18,
-    timeVisible = 4,
+    timeVisible = 3,
     fontOpacity = 1.0,
-    useBackground = false,
-    bgOpacity = 1,
+    bgOpacity = 0.7,
     chatOrder = "TOP",
     showNames = true,
     showAllChat = true,
@@ -73,7 +72,7 @@ addon.L = {
     TOOLTIP_alertkeywords = "Enter newline-separated keywords or phrases to trigger alerts (e.g., 'Be careful\nMana\nPatrol').",
     TOOLTIP_alertmodeenabled = "Enable alert-only mode to show messages only with keywords.",
     TOOLTIP_alertsound = "Toggle a ding sound when a keyword is detected in alert-only mode.",
-    TOOLTIP_highlightkeyword = "Highlight alert keywords in red.",
+    TOOLTIP_highlightkeyword = "Highlight alert keywords in red with a larger font (+2 size). When off, disable keyword matching and filtering for performance.",
 }
 
 -- Slash command handler
