@@ -4,6 +4,11 @@ local addonName, addon = ...
 
 -- Initialize addon on load
 local function Setup()
+    -- Initialize DB if needed
+    if not ChatEnhancerDB then
+        ChatEnhancerDB = {}
+    end
+    
     if not next(ChatEnhancerDB) then
         for k, v in pairs(addon.defaults) do
             ChatEnhancerDB[k] = v
@@ -13,106 +18,146 @@ local function Setup()
     
     -- Create the main message frame
     local msgFrame = CreateFrame("MessageFrame", "ChatEnhancerFrame", UIParent)
-    msgFrame:SetSize(1, 80) -- Width will be dynamic
-    msgFrame:SetPoint(cfg.point, UIParent, cfg.point, cfg.x, cfg.y)
-    msgFrame:SetInsertMode(cfg.chatOrder)
-    msgFrame:SetFont(STANDARD_TEXT_FONT, cfg.fontSize, "OUTLINE")
+    msgFrame:SetSize(500, 80) -- Width will adjust based on content
+    msgFrame:SetPoint(cfg.point or "CENTER", UIParent, cfg.point or "CENTER", cfg.x or 0, cfg.y or 0)
+    msgFrame:SetInsertMode(cfg.chatOrder or "BOTTOM")
+    msgFrame:SetFont(STANDARD_TEXT_FONT, cfg.fontSize or 14, "OUTLINE")
     msgFrame:SetFading(true)
     msgFrame:SetFadeDuration(0.5)
-    msgFrame:SetTimeVisible(cfg.timeVisible)
-    msgFrame:SetAlpha(cfg.fontOpacity)
+    msgFrame:SetTimeVisible(cfg.timeVisible or 10)
+    msgFrame:SetAlpha(cfg.fontOpacity or 1.0)
+    msgFrame:Show() -- Ensure frame is visible
     
-    -- Store active messages for background calculation
-    local activeMessages = {}
+    -- Store active messages for tracking
+    addon.activeMessages = {}
     
-    -- Format text with background if needed
-    local function FormatTextWithBackground(text)
-        if cfg.bgOpacity <= 0 then
-            return text
+    -- Create a frame that will serve as our background container
+    local function CreateBackgroundContainer(parent)
+        -- Create a container frame to hold individual message backgrounds
+        local container = CreateFrame("Frame", parent:GetName() .. "BackgroundContainer", UIParent)
+        container:SetPoint("TOPLEFT", parent, "TOPLEFT", -10, 10)
+        container:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 10, -10)
+        container:SetFrameStrata("BACKGROUND")
+        
+        -- Table to track active background frames
+        container.backgroundFrames = {}
+        
+        -- Function to clean up expired backgrounds
+        container.CleanupBackgrounds = function()
+            local now = GetTime()
+            for i = #container.backgroundFrames, 1, -1 do
+                local bgFrame = container.backgroundFrames[i]
+                if now - bgFrame.creationTime > bgFrame.duration then
+                    bgFrame:Hide()
+                    table.remove(container.backgroundFrames, i)
+                end
+            end
         end
         
-        -- Calculate padding based on font size
-        local padding = math.floor(cfg.fontSize * 0.5)
-        local verticalPadding = math.floor(cfg.fontSize * 0.3)
-        
-        -- Create padding spaces
-        local horizontalPadding = string.rep(" ", padding)
-        local topBottomPadding = "\n"
-        
-        -- Format with padding
-        local formattedText
-        if #activeMessages > 0 then
-            -- Add padding relative to existing messages
-            formattedText = topBottomPadding .. horizontalPadding .. text .. horizontalPadding .. topBottomPadding
-        else
-            -- First message gets full padding
-            formattedText = topBottomPadding .. horizontalPadding .. text .. horizontalPadding .. topBottomPadding
+        -- Function to create a new background for a message
+        container.CreateMessageBackground = function(text)
+            -- First, clean up any expired backgrounds
+            container.CleanupBackgrounds()
+            
+            -- Create a new backdrop frame for this message
+            local bgFrame = CreateFrame("Frame", nil, container, "BackdropTemplate")
+            bgFrame:SetFrameStrata("BACKGROUND")
+            
+            -- Estimate text dimensions based on font size and message length
+            local fontSize = cfg.fontSize or 14
+            local estimatedWidth = math.min(fontSize * (#text * 0.6), 500) -- Cap at 500px
+            local estimatedHeight = fontSize * 1.5 -- Allow for some padding
+            
+            -- Position at the appropriate insertion point
+            if cfg.chatOrder == "TOP" then
+                -- For TOP insert mode, new messages appear at the top
+                bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+                
+                -- Shift existing frames down
+                for _, existingFrame in ipairs(container.backgroundFrames) do
+                    local _, _, _, _, _, oldY = existingFrame:GetPoint(1)
+                    existingFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, oldY - estimatedHeight - 2)
+                end
+            else
+                -- For BOTTOM insert mode, new messages appear at the bottom
+                if #container.backgroundFrames > 0 then
+                    local lastFrame = container.backgroundFrames[#container.backgroundFrames]
+                    local _, _, _, _, _, oldY = lastFrame:GetPoint(1)
+                    bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, oldY - estimatedHeight - 2)
+                else
+                    bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -estimatedHeight)
+                end
+            end
+            
+            -- Set size based on text length
+            bgFrame:SetSize(estimatedWidth, estimatedHeight)
+            
+            -- Apply backdrop
+            bgFrame:SetBackdrop({
+                bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+                edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                edgeSize = 8,
+                insets = { left = 2, right = 2, top = 2, bottom = 2 }
+            })
+            
+            -- Set colors
+            bgFrame:SetBackdropColor(0, 0, 0, cfg.bgOpacity or 0.5)
+            bgFrame:SetBackdropBorderColor(0, 0, 0, (cfg.bgOpacity or 0.5) * 0.7)
+            
+            -- Track creation time and duration
+            bgFrame.creationTime = GetTime()
+            bgFrame.duration = cfg.timeVisible or 10
+            
+            -- Add to our tracking table
+            table.insert(container.backgroundFrames, 1, bgFrame)
+            
+            -- Ensure the frame is visible
+            bgFrame:Show()
+            
+            return bgFrame
         end
         
-        -- Create background color with configured opacity
-        local bgColor = CreateColor(0, 0, 0, cfg.bgOpacity)
-        
-        -- Add background coloring
-        return string.format("|c%s%s|r", bgColor:GenerateHexColor(), formattedText)
+        return container
     end
     
-    -- Instead of trying to color the background directly, we should modify how messages are displayed
-local function FormatTextWithBackground(text)
-    -- Just return the text as is - we'll handle background separately
-    return text
-end
-
--- Override AddMessage to handle background formatting
-local originalAddMessage = msgFrame.AddMessage
-msgFrame.AddMessage = function(self, text, ...)
-    local now = GetTime()
+    -- Create background container
+    local bgContainer = CreateBackgroundContainer(msgFrame)
     
-    -- Clean expired messages
-    for i = #activeMessages, 1, -1 do
-        if now - activeMessages[i].time > activeMessages[i].duration then
-            table.remove(activeMessages, i)
+    -- Override AddMessage to handle background creation for each message
+    local originalAddMessage = msgFrame.AddMessage
+    msgFrame.AddMessage = function(self, text, ...)
+        local now = GetTime()
+        
+        -- Clean expired messages
+        for i = #addon.activeMessages, 1, -1 do
+            if now - addon.activeMessages[i].time > addon.activeMessages[i].duration then
+                table.remove(addon.activeMessages, i)
+            end
         end
-    end
-    
-    -- Add new message to tracking
-    table.insert(activeMessages, {
-        text = text,
-        time = now,
-        duration = cfg.timeVisible
-    })
-    
-    -- Call original method with text color (not trying to do background via text)
-    originalAddMessage(self, text, ...)
-    
-    -- Instead, we need to create or update a backdrop for the frame
-    if not self.backdrop and cfg.bgOpacity > 0 then
-        self.backdrop = CreateFrame("Frame", nil, self)
-        self.backdrop:SetFrameStrata("BACKGROUND")
-        self.backdrop:SetPoint("TOPLEFT", self, "TOPLEFT", -5, 5)
-        self.backdrop:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 5, -5)
-        self.backdrop:SetBackdrop({
-            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        
+        -- Add new message to tracking
+        table.insert(addon.activeMessages, {
+            text = text,
+            time = now,
+            duration = cfg.timeVisible or 10
         })
-        self.backdrop:SetBackdropColor(0, 0, 0, cfg.bgOpacity)
-        self.backdrop:SetBackdropBorderColor(0, 0, 0, cfg.bgOpacity * 0.5)
-    elseif self.backdrop then
-        if cfg.bgOpacity > 0 then
-            self.backdrop:SetBackdropColor(0, 0, 0, cfg.bgOpacity)
-            self.backdrop:SetBackdropBorderColor(0, 0, 0, cfg.bgOpacity * 0.5)
-            self.backdrop:Show()
-        else
-            self.backdrop:Hide()
+        
+        -- Call original method to display the text
+        originalAddMessage(self, text, ...)
+        
+        -- Skip background creation if opacity is 0
+        if not cfg.bgOpacity or cfg.bgOpacity <= 0 then
+            return
         end
+        
+        -- Create a background for this message
+        bgContainer.CreateMessageBackground(text)
     end
-end
     
     -- Store references in addon table
     addon.frame = msgFrame
     addon.cfg = cfg
-    addon.activeMessages = activeMessages
+    addon.bgContainer = bgContainer
     
     -- Update function to refresh display when settings change
     addon.updateDisplay = function()
@@ -152,6 +197,14 @@ end
         addon.classColors[name] = {0.5, 0.7, 1.0}
         return 0.5, 0.7, 1.0
     end
+    
+    -- Test messages to verify functionality
+    C_Timer.After(1, function() 
+        msgFrame:AddMessage("|cff00ff00[ChatEnhancer]|r Addon loaded successfully!") 
+    end)
+    C_Timer.After(2, function() 
+        msgFrame:AddMessage("|cff00ff00[ChatEnhancer]|r This is a longer test message to verify background sizing") 
+    end)
 end
 
 -- Parse keywords for alert filtering
