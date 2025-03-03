@@ -65,8 +65,8 @@ local function Setup()
             
             -- Estimate text dimensions based on font size and message length
             local fontSize = cfg.fontSize or 14
-            local estimatedWidth = math.min(fontSize * (#text * 0.6), 500) -- Cap at 500px
-            local estimatedHeight = fontSize * 1.5 -- Allow for some padding
+            local estimatedWidth = math.min(fontSize * (#text * 0.7), 500) -- Cap at 500px, increased multiplier
+            local estimatedHeight = fontSize * 1.8 -- Increased height for better appearance
             
             -- Position at the appropriate insertion point
             if cfg.chatOrder == "TOP" then
@@ -75,15 +75,21 @@ local function Setup()
                 
                 -- Shift existing frames down
                 for _, existingFrame in ipairs(container.backgroundFrames) do
-                    local _, _, _, _, _, oldY = existingFrame:GetPoint(1)
-                    existingFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, oldY - estimatedHeight - 2)
+                    local point, relFrame, relPoint, xOfs, yOfs = existingFrame:GetPoint(1)
+                    if point and yOfs then -- Make sure we have valid position data
+                        existingFrame:SetPoint(point, relFrame, relPoint, xOfs, yOfs - estimatedHeight - 2)
+                    end
                 end
             else
                 -- For BOTTOM insert mode, new messages appear at the bottom
                 if #container.backgroundFrames > 0 then
                     local lastFrame = container.backgroundFrames[#container.backgroundFrames]
-                    local _, _, _, _, _, oldY = lastFrame:GetPoint(1)
-                    bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, oldY - estimatedHeight - 2)
+                    local point, relFrame, relPoint, xOfs, yOfs = lastFrame:GetPoint(1)
+                    if point and yOfs then -- Make sure we have valid position data
+                        bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, yOfs - estimatedHeight - 2)
+                    else
+                        bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -estimatedHeight)
+                    end
                 else
                     bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -estimatedHeight)
                 end
@@ -165,6 +171,11 @@ local function Setup()
         msgFrame:SetTimeVisible(cfg.timeVisible)
         msgFrame:SetAlpha(cfg.fontOpacity)
         msgFrame:SetInsertMode(cfg.chatOrder)
+        
+        -- Update background fade time to match
+        for _, bgFrame in ipairs(bgContainer.backgroundFrames) do
+            bgFrame.duration = cfg.timeVisible
+        end
     end
     
     -- Store player name for later use
@@ -197,6 +208,11 @@ local function Setup()
         addon.classColors[name] = {0.5, 0.7, 1.0}
         return 0.5, 0.7, 1.0
     end
+    
+    -- Set up a timer to periodically clean up background frames
+    C_Timer.NewTicker(1, function()
+        bgContainer.CleanupBackgrounds()
+    end)
     
     -- Test messages to verify functionality
     C_Timer.After(1, function() 
