@@ -3,18 +3,6 @@
 local addonName, addon = ...
 
 function addon.ShowOptions()
-    -- Make sure cfg is initialized
-    if not addon.cfg then
-        -- Initialize from ChatEnhancerDB or defaults if not set up yet
-        addon.cfg = ChatEnhancerDB or {}
-        
-        -- Populate with defaults if empty
-        if not next(addon.cfg) then
-            for k, v in pairs(addon.defaults) do
-                addon.cfg[k] = v
-            end
-        end
-    end
     if addon.optionsFrame then 
         addon.optionsFrame:Show()
         return
@@ -175,21 +163,6 @@ function addon.ShowOptions()
         addon.updateDisplay()
     end)
     
-    local bgOpacitySlider = CreateSlider("bgopacity", addon.L.BG_OPACITY, 0, 10, cfg.bgOpacity * 10, rightX, -115,
-        function(v) return (v/10) end)
-    bgOpacitySlider:SetValueStep(1)
-    bgOpacitySlider:SetScript("OnValueChanged", function(self, value)
-        local discreteValue = math.floor(value)
-        if discreteValue ~= value then
-            self:SetValue(discreteValue)
-            return
-        end
-        local val = discreteValue / 10
-        self.text:SetText(addon.L.BG_OPACITY .. ": " .. val)
-        cfg.bgOpacity = val
-        addon.updateDisplay()
-    end)
-    
     CreateSeparator(addon.L.SECTION_FILTERS, -170)
     local questieCheck = CreateCheckbox("filterquestie", addon.L.FILTER_QUESTIE, cfg.filterQuestie, leftX, -200)
     questieCheck:SetScript("OnClick", function(self) cfg.filterQuestie = self:GetChecked() end)
@@ -255,7 +228,6 @@ function addon.ShowOptions()
         fontSlider:SetValue(cfg.fontSize)
         timeSlider:SetValue(cfg.timeVisible)
         fontOpacitySlider:SetValue(cfg.fontOpacity * 10)
-        bgOpacitySlider:SetValue(cfg.bgOpacity * 10)
         chatOrderCheck:SetChecked(cfg.chatOrder == "BOTTOM")
         showNamesCheck:SetChecked(cfg.showNames)
         showAllChatCheck:SetChecked(cfg.showAllChat)
