@@ -3,6 +3,18 @@
 local addonName, addon = ...
 
 function addon.ShowOptions()
+    -- Make sure cfg is initialized
+    if not addon.cfg then
+        -- Initialize from ChatEnhancerDB or defaults if not set up yet
+        addon.cfg = ChatEnhancerDB or {}
+        
+        -- Populate with defaults if empty
+        if not next(addon.cfg) then
+            for k, v in pairs(addon.defaults) do
+                addon.cfg[k] = v
+            end
+        end
+    end
     if addon.optionsFrame then 
         addon.optionsFrame:Show()
         return

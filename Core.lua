@@ -41,145 +41,62 @@ local function Setup()
         
         -- Table to track active background frames
         container.backgroundFrames = {}
-        container.messageHeights = {} -- Store heights of each message for proper stacking
-        container.currentStackHeight = 0 -- Track total stack height
-        
-        -- Calculate text dimensions
-        container.CalculateTextDimensions = function(text, fontSize)
-            -- Create a FontString to measure text if we don't have one
-            if not container.measureText then
-                container.measureText = UIParent:CreateFontString(nil, "BACKGROUND")
-                container.measureText:SetFont(STANDARD_TEXT_FONT, fontSize or 14, "OUTLINE")
-                container.measureText:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -1000, -1000) -- Off screen
-            end
-            
-            -- Set the text and font size
-            container.measureText:SetFont(STANDARD_TEXT_FONT, fontSize or 14, "OUTLINE")
-            container.measureText:SetText(text)
-            
-            -- Get dimensions and add padding
-            local width = container.measureText:GetStringWidth() + 20 -- Add padding
-            local height = (fontSize or 14) * 1.5 -- Base height on font size
-            
-            -- Ensure minimum dimensions
-            width = math.max(width, 100)
-            height = math.max(height, fontSize * 1.5)
-            
-            -- Cap maximum width
-            width = math.min(width, 500)
-            
-            return width, height
-        end
-        
-        -- Start a fade animation for a background frame
-        container.StartFade = function(bgFrame)
-            if not bgFrame.fadeAnim then
-                bgFrame.fadeAnim = bgFrame:CreateAnimationGroup()
-                local fade = bgFrame.fadeAnim:CreateAnimation("Alpha")
-                fade:SetFromAlpha(1)
-                fade:SetToAlpha(0)
-                fade:SetDuration(0.5) -- Match the text fade duration
-                fade:SetSmoothing("OUT")
-                bgFrame.fadeAnim:SetScript("OnFinished", function()
-                    bgFrame:Hide()
-                    -- Remove from tracking table
-                    for i, frame in ipairs(container.backgroundFrames) do
-                        if frame == bgFrame then
-                            table.remove(container.backgroundFrames, i)
-                            table.remove(container.messageHeights, i)
-                            break
-                        end
-                    end
-                    -- Recalculate stack height
-                    container.RecalculateStackHeight()
-                end)
-            end
-            
-            bgFrame.fadeAnim:Play()
-        end
-        
-        -- Recalculate and adjust the total stack height
-        container.RecalculateStackHeight = function()
-            container.currentStackHeight = 0
-            local spacing = 2 -- Space between messages
-            
-            -- Reposition all frames
-            for i, bgFrame in ipairs(container.backgroundFrames) do
-                local height = container.messageHeights[i] or 20
-                
-                if cfg.chatOrder == "TOP" then
-                    -- For TOP insert mode, stack from top to bottom
-                    bgFrame:ClearAllPoints()
-                    bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -container.currentStackHeight)
-                    container.currentStackHeight = container.currentStackHeight + height + spacing
-                else
-                    -- For BOTTOM insert mode, stack from bottom to top
-                    bgFrame:ClearAllPoints()
-                    if i == 1 then
-                        bgFrame:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 0, 0)
-                    else
-                        local prevHeight = 0
-                        for j = 1, i-1 do
-                            prevHeight = prevHeight + (container.messageHeights[j] or 20) + spacing
-                        end
-                        bgFrame:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 0, prevHeight)
-                    end
-                end
-            end
-        end
         
         -- Function to clean up expired backgrounds
         container.CleanupBackgrounds = function()
             local now = GetTime()
-            local needsRecalculation = false
-            
             for i = #container.backgroundFrames, 1, -1 do
                 local bgFrame = container.backgroundFrames[i]
-                -- Start fadeout when time is almost up
-                if not bgFrame.isFading and (now - bgFrame.creationTime) > (bgFrame.duration - 0.5) then
-                    bgFrame.isFading = true
-                    container.StartFade(bgFrame)
+                if now - bgFrame.creationTime > bgFrame.duration then
+                    bgFrame:Hide()
+                    table.remove(container.backgroundFrames, i)
                 end
             end
         end
         
         -- Function to create a new background for a message
         container.CreateMessageBackground = function(text)
-            -- Clean up any expired backgrounds
+            -- First, clean up any expired backgrounds
             container.CleanupBackgrounds()
             
             -- Create a new backdrop frame for this message
             local bgFrame = CreateFrame("Frame", nil, container, "BackdropTemplate")
             bgFrame:SetFrameStrata("BACKGROUND")
             
-            -- Calculate text dimensions based on content
+            -- Estimate text dimensions based on font size and message length
             local fontSize = cfg.fontSize or 14
-            local width, height = container.CalculateTextDimensions(text, fontSize)
+            local estimatedWidth = math.min(fontSize * (#text * 0.7), 500) -- Cap at 500px, increased multiplier
+            local estimatedHeight = fontSize * 1.8 -- Increased height for better appearance
             
-            -- Set size based on calculated dimensions
-            bgFrame:SetSize(width, height)
-            
-            -- Position based on insertion mode
+            -- Position at the appropriate insertion point
             if cfg.chatOrder == "TOP" then
                 -- For TOP insert mode, new messages appear at the top
                 bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
                 
                 -- Shift existing frames down
-                for i, existingFrame in ipairs(container.backgroundFrames) do
+                for _, existingFrame in ipairs(container.backgroundFrames) do
                     local point, relFrame, relPoint, xOfs, yOfs = existingFrame:GetPoint(1)
-                    if point then
-                        existingFrame:ClearAllPoints()
-                        existingFrame:SetPoint(point, relFrame, relPoint, xOfs, yOfs - height - 2)
+                    if point and yOfs then -- Make sure we have valid position data
+                        existingFrame:SetPoint(point, relFrame, relPoint, xOfs, yOfs - estimatedHeight - 2)
                     end
                 end
             else
-                -- For BOTTOM insert mode, stack from bottom
+                -- For BOTTOM insert mode, new messages appear at the bottom
                 if #container.backgroundFrames > 0 then
-                    bgFrame:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 0, container.currentStackHeight)
+                    local lastFrame = container.backgroundFrames[#container.backgroundFrames]
+                    local point, relFrame, relPoint, xOfs, yOfs = lastFrame:GetPoint(1)
+                    if point and yOfs then -- Make sure we have valid position data
+                        bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, yOfs - estimatedHeight - 2)
+                    else
+                        bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -estimatedHeight)
+                    end
                 else
-                    bgFrame:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 0, 0)
+                    bgFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -estimatedHeight)
                 end
             end
+            
+            -- Set size based on text length
+            bgFrame:SetSize(estimatedWidth, estimatedHeight)
             
             -- Apply backdrop
             bgFrame:SetBackdrop({
@@ -196,17 +113,9 @@ local function Setup()
             -- Track creation time and duration
             bgFrame.creationTime = GetTime()
             bgFrame.duration = cfg.timeVisible or 10
-            bgFrame.isFading = false
             
-            -- Add to our tracking tables
+            -- Add to our tracking table
             table.insert(container.backgroundFrames, 1, bgFrame)
-            table.insert(container.messageHeights, 1, height)
-            
-            -- Update stack height
-            container.currentStackHeight = container.currentStackHeight + height + 2
-            
-            -- Recalculate all positions to ensure proper stacking
-            container.RecalculateStackHeight()
             
             -- Ensure the frame is visible
             bgFrame:Show()
@@ -267,9 +176,6 @@ local function Setup()
         for _, bgFrame in ipairs(bgContainer.backgroundFrames) do
             bgFrame.duration = cfg.timeVisible
         end
-        
-        -- Recalculate backgrounds after settings change
-        bgContainer.RecalculateStackHeight()
     end
     
     -- Store player name for later use
@@ -304,7 +210,7 @@ local function Setup()
     end
     
     -- Set up a timer to periodically clean up background frames
-    C_Timer.NewTicker(0.1, function()
+    C_Timer.NewTicker(1, function()
         bgContainer.CleanupBackgrounds()
     end)
     
