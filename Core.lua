@@ -18,7 +18,14 @@ local function Setup()
     
     -- Create the main message frame
     local msgFrame = CreateFrame("MessageFrame", "ChatEnhancerFrame", UIParent)
-    msgFrame:SetSize(500, 80) -- Width will adjust based on content
+    
+    -- Set size based on WorldFrame dimensions (70% height, 40% width)
+    local worldFrame = WorldFrame
+    local worldWidth, worldHeight = worldFrame:GetWidth(), worldFrame:GetHeight()
+    local frameWidth = worldWidth * 0.4
+    local frameHeight = worldHeight * 0.6
+    msgFrame:SetSize(frameWidth, frameHeight)
+    
     msgFrame:SetPoint(cfg.point or "CENTER", UIParent, cfg.point or "CENTER", cfg.x or 0, cfg.y or 0)
     msgFrame:SetInsertMode(cfg.chatOrder or "BOTTOM")
     msgFrame:SetFont(STANDARD_TEXT_FONT, cfg.fontSize or 14, "OUTLINE")
@@ -89,6 +96,26 @@ local function ParseKeywords(keywordsText)
     return keywords
 end
 
+-- Custom function to add message with max lines limit
+local function AddMessageWithLimit(frame, text)
+    -- Clear the frame if we've reached the max messages
+    if #addon.activeMessages >= (addon.cfg.maxMessages or 4) then
+        frame:Clear()
+        addon.activeMessages = {}
+    end
+    
+    -- Add the message
+    frame:AddMessage(text)
+    
+    -- Store the message
+    table.insert(addon.activeMessages, text)
+    
+    -- Remove oldest message if we exceed the limit
+    while #addon.activeMessages > (addon.cfg.maxMessages or 4) do
+        table.remove(addon.activeMessages, 1)
+    end
+end
+
 -- Event handling for chat messages
 local eventFrame = CreateFrame("Frame")
 addon.eventFrame = eventFrame
@@ -105,6 +132,10 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         if addon.cfg.showAllChat then
             self:RegisterEvent("CHAT_MSG_YELL")
             self:RegisterEvent("CHAT_MSG_SAY")
+        end
+        if addon.cfg.showWhispers then
+            self:RegisterEvent("CHAT_MSG_WHISPER")
+            self:RegisterEvent("CHAT_MSG_WHISPER_INFORM")
         end
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "GROUP_ROSTER_UPDATE" then
@@ -166,6 +197,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
                 msgColor = "|cffff0000"
             elseif event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER" or event == "CHAT_MSG_RAID_WARNING" then
                 msgColor = "|cffa330c9"
+            elseif event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_WHISPER_INFORM" then
+                msgColor = "|cffff00ff"
             else
                 msgColor = nameColor
             end
@@ -218,7 +251,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             end
         end
         
-        -- Add message to frame
-        addon.frame:AddMessage(displayText)
+        -- Add message to frame with max lines limit
+        AddMessageWithLimit(addon.frame, displayText)
     end
 end)
