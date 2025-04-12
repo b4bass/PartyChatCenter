@@ -161,7 +161,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
         
         -- Filter Questie messages if enabled
-        if cfg.filterQuestie and message:find("Questie") then return end
+        if cfg.filterQuestie and message:find("Questie:") then return end
         
         -- Check for keywords
         local hasKeyword = false
