@@ -163,12 +163,41 @@ function addon.ShowOptions()
         addon.updateDisplay()
     end)
     
+    -- Initialize maxMessages if it doesn't exist
+    if not cfg.maxMessages then
+        cfg.maxMessages = 4
+    end
+    
+    local maxMessagesSlider = CreateSlider("maxmessages", addon.L.MAX_MESSAGES, 1, 8, cfg.maxMessages, rightX, -115,
+        function(v) return v end)
+    maxMessagesSlider:SetScript("OnValueChanged", function(self, value)
+        local val = math.floor(value)
+        self.text:SetText(addon.L.MAX_MESSAGES .. ": " .. val)
+        cfg.maxMessages = val
+        -- Clear the frame and reset active messages when changing max messages
+        addon.frame:Clear()
+        addon.activeMessages = {}
+    end)
+    
     CreateSeparator(addon.L.SECTION_FILTERS, -170)
     local questieCheck = CreateCheckbox("filterquestie", addon.L.FILTER_QUESTIE, cfg.filterQuestie, leftX, -200)
     questieCheck:SetScript("OnClick", function(self) cfg.filterQuestie = self:GetChecked() end)
     
     local ownMsgCheck = CreateCheckbox("filterown", addon.L.FILTER_OWN, cfg.filterOwnMessages, leftX, -230)
     ownMsgCheck:SetScript("OnClick", function(self) cfg.filterOwnMessages = self:GetChecked() end)
+    
+    local showWhispersCheck = CreateCheckbox("showwhispers", addon.L.SHOW_WHISPERS, cfg.showWhispers, rightX, -200)
+    showWhispersCheck:SetScript("OnClick", function(self)
+        cfg.showWhispers = self:GetChecked()
+        local eventFrame = addon.eventFrame
+        if cfg.showWhispers then
+            eventFrame:RegisterEvent("CHAT_MSG_WHISPER")
+            eventFrame:RegisterEvent("CHAT_MSG_WHISPER_INFORM")
+        else
+            eventFrame:UnregisterEvent("CHAT_MSG_WHISPER")
+            eventFrame:UnregisterEvent("CHAT_MSG_WHISPER_INFORM")
+        end
+    end)
     
     CreateSeparator(addon.L.SECTION_BEHAVIOR, -270)
     local chatOrderCheck = CreateCheckbox("reversechat", addon.L.REVERSE_CHAT, cfg.chatOrder == "BOTTOM", leftX, -300)
@@ -228,9 +257,11 @@ function addon.ShowOptions()
         fontSlider:SetValue(cfg.fontSize)
         timeSlider:SetValue(cfg.timeVisible)
         fontOpacitySlider:SetValue(cfg.fontOpacity * 10)
+        maxMessagesSlider:SetValue(cfg.maxMessages)
         chatOrderCheck:SetChecked(cfg.chatOrder == "BOTTOM")
         showNamesCheck:SetChecked(cfg.showNames)
         showAllChatCheck:SetChecked(cfg.showAllChat)
+        showWhispersCheck:SetChecked(cfg.showWhispers)
         questieCheck:SetChecked(cfg.filterQuestie)
         ownMsgCheck:SetChecked(cfg.filterOwnMessages)
         colorMessagesCheck:SetChecked(cfg.colorMessages)
@@ -248,8 +279,15 @@ function addon.ShowOptions()
             eventFrame:UnregisterEvent("CHAT_MSG_YELL")
             eventFrame:UnregisterEvent("CHAT_MSG_SAY")
         end
-        print(addon.L.RESET_CONFIRM)
+        if cfg.showWhispers then
+            eventFrame:RegisterEvent("CHAT_MSG_WHISPER")
+            eventFrame:RegisterEvent("CHAT_MSG_WHISPER_INFORM")
+        else
+            eventFrame:UnregisterEvent("CHAT_MSG_WHISPER")
+            eventFrame:UnregisterEvent("CHAT_MSG_WHISPER_INFORM")
+        end
     end)
     
     addon.optionsFrame = frame
+    frame:Show()
 end

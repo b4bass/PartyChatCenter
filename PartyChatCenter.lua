@@ -16,10 +16,12 @@ addon.defaults = {
     chatOrder = "TOP",
     showNames = true,
     showAllChat = false,
+    showWhispers = false,
     filterQuestie = true,
     filterOwnMessages = true,
     colorMessages = false,
     locationMode = 3,
+    maxMessages = 4,
     alertKeywords = "Be careful\nMana\nPatrol",
     alertModeEnabled = false,
     alertSound = true,
@@ -33,9 +35,11 @@ addon.L = {
     FONT_SIZE = "Font Size",
     DISPLAY_TIME = "Display Time",
     FONT_OPACITY = "Font Opacity",
+    MAX_MESSAGES = "Max Messages",
     REVERSE_CHAT = "Reverse Chat Order",
     SHOW_NAMES = "Show Names",
     SHOW_ALL_CHAT = "Show All Chat",
+    SHOW_WHISPERS = "Show Whispers",
     FILTER_QUESTIE = "Filter Questie Messages",
     FILTER_OWN = "Filter Your Messages",
     COLOR_MESSAGES = "Color Messages",
@@ -59,12 +63,14 @@ addon.L = {
     TOOLTIP_fontsize = "Adjust the font size of chat messages (12-28).",
     TOOLTIP_displaytime = "Set how long messages remain visible in seconds (1-8s).",
     TOOLTIP_fontopacity = "Adjust the transparency of chat text (0.1-1.0).",
+    TOOLTIP_maxmessages = "Set the maximum number of messages to display (1-8).",
     TOOLTIP_reversechat = "Reverse the order of chat messages (newest at bottom vs. top).",
     TOOLTIP_shownames = "Toggle displaying sender names before messages.",
     TOOLTIP_showallchat = "Show all chat types (say, yell) in addition to party/raid chat.",
+    TOOLTIP_showwhispers = "Show whisper messages in the chat window.",
     TOOLTIP_filterquestie = "Filter out messages containing 'Questie' to reduce clutter.",
     TOOLTIP_filterown = "Filter out your own messages from being displayed.",
-    TOOLTIP_colormessages = "Color messages by type: Say (white), Party (blue), Yell (red), Raid (purple).",
+    TOOLTIP_colormessages = "Color messages by type: Say (white), Party (blue), Yell (red), Raid (purple), Whisper (pink).",
     TOOLTIP_locationmode = "Choose where the addon operates: Dungeon, World, or Both.",
     TOOLTIP_alertkeywords = "Enter newline-separated keywords or phrases to trigger alerts (e.g., 'Be careful\nMana\nPatrol').",
     TOOLTIP_alertmodeenabled = "Enable alert-only mode to show messages only with keywords.",
@@ -92,7 +98,7 @@ SlashCmdList["CHATENHANCER"] = function(msg)
         end
     elseif msg:match("^time%s+(%d+)$") then
         local time = tonumber(msg:match("^time%s+(%d+)$"))
-        if time and time >= 1 and time <= 6 then
+        if time and time >= 1 and time <= 8 then
             addon.cfg.timeVisible = time
             addon.frame:SetTimeVisible(time)
             print(string.format(addon.L.TIME_SET, time))
